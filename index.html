@@ -49,9 +49,9 @@
     log.innerText = 'Cargando modelos...';
 
     // Cargar modelos de FaceAPI
-    await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
-    await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
-    await faceapi.nets.faceRecognitionNet.loadFromUri('/models');
+    await faceapi.nets.tinyFaceDetector.loadFromUri('https://issitek.github.io/models/');
+    await faceapi.nets.faceLandmark68Net.loadFromUri('https://issitek.github.io/models/');
+    await faceapi.nets.faceRecognitionNet.loadFromUri('https://issitek.github.io/models/');
 
     // Cargar imagen de referencia y crear descriptores
     const img = await faceapi.fetchImage('/img/angel.jpg');
