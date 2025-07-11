@@ -43,17 +43,20 @@
 
   let objectDetector;
   let labeledDescriptors;
+  let faceMatcher;
   let running = true;
+  let frameCount = 0;
+  let lastObjectDetections = [];
+  let lastFaceDetections = [];
+  let lastFaceMatches = [];
 
   async function init() {
     log.innerText = 'Cargando modelos...';
 
-    // Cargar modelos de FaceAPI
     await faceapi.nets.tinyFaceDetector.loadFromUri('https://issitek.github.io/face-and-object-recognition/models');
     await faceapi.nets.faceLandmark68Net.loadFromUri('https://issitek.github.io/face-and-object-recognition/models');
     await faceapi.nets.faceRecognitionNet.loadFromUri('https://issitek.github.io/face-and-object-recognition/models');
 
-    // Cargar imagen de referencia y crear descriptores
     const img = await faceapi.fetchImage('https://issitek.github.io/face-and-object-recognition/img/angel.jpg');
     const detection = await faceapi
       .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
@@ -65,13 +68,11 @@
       return;
     }
 
-    labeledDescriptors = [
-      new faceapi.LabeledFaceDescriptors('angel', [detection.descriptor])
-    ];
+    labeledDescriptors = [new faceapi.LabeledFaceDescriptors('angel', [detection.descriptor])];
+    faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.6);
 
     log.innerText = 'Modelos de rostro cargados. Cargando modelo de objetos...';
 
-    // Cargar modelo de objetos EfficientDet
     const vision = await FilesetResolver.forVisionTasks(
       "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
     );
@@ -105,64 +106,44 @@
   async function detectFrame() {
     if (!running) return;
 
-    const nowInMs = Date.now();
-    
-
-    // -------- EfficientDet --------
-    const result = await objectDetector.detectForVideo(video, nowInMs);
-    drawDetections(result);
-
-    // -------- FaceAPI --------
-    const faceResults = await faceapi
-      .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
-      .withFaceLandmarks()
-      .withFaceDescriptors();
-
-    const faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.6);
-
-    // Crear lista paralela de matches
-    const matches = faceResults.map(fd => faceMatcher.findBestMatch(fd.descriptor));
-
-    // Redimensionar solo para dibujar
-    const displaySize = { width: canvas.width, height: canvas.height };
-    const resizedResults = faceapi.resizeResults(faceResults, displaySize);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    // Usar los boxes redimensionados con los matches reales
-    resizedResults.forEach((fd, i) => {
-      const match = matches[i];
-      const box = fd.detection.box;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      const x = box.x;
-      const y = box.y;
-      const width = box.width;
-      const height = box.height;
+    const nowInMs = Date.now();
 
-      ctx.strokeStyle = 'red';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x, y, width, height);
+    // EfficientDet cada 2 frames
+    if (frameCount % 2 === 0) {
+      const result = await objectDetector.detectForVideo(video, nowInMs);
+      lastObjectDetections = result.detections || [];
+    }
 
-      ctx.font = "16px sans-serif";
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-      ctx.fillRect(x, y - 20, ctx.measureText(match.toString()).width + 10, 20);
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillText(match.toString(), x + 5, y - 5);
-      console.log("Dibujo rostro:", match.toString(), fd.detection.box);
-      log.innerHTML += `Rostro: ${match.toString()}<br>`;
-    });
-    
+    // FaceAPI cada 3 frames
+    if (frameCount % 3 === 0) {
+      const faceResults = await faceapi
+        .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptors();
 
+      const resizedResults = faceapi.resizeResults(faceResults, {
+        width: canvas.width,
+        height: canvas.height
+      });
+
+      lastFaceDetections = resizedResults;
+      lastFaceMatches = faceResults.map(fd => faceMatcher.findBestMatch(fd.descriptor));
+    }
+
+    drawAll();
+
+    frameCount++;
     requestAnimationFrame(detectFrame);
   }
 
-  function drawDetections(result) {
-    if (!result.detections || result.detections.length === 0) {
-      log.innerHTML = 'Sin objetos detectados<br>';
-      return;
-    }
-
+  function drawAll() {
     log.innerHTML = '';
 
-    result.detections.forEach((det) => {
+    // Dibujar objetos
+    lastObjectDetections.forEach(det => {
       const box = det.boundingBox;
       const category = det.categories[0];
       const x = box.originX;
@@ -181,6 +162,29 @@
       ctx.fillText(`${category.categoryName} (${(category.score * 100).toFixed(1)}%)`, x + 5, y - 5);
 
       log.innerHTML += `${category.categoryName} (${(category.score * 100).toFixed(1)}%)<br>`;
+    });
+
+    // Dibujar rostros
+    lastFaceDetections.forEach((fd, i) => {
+      const match = lastFaceMatches[i];
+      const box = fd.detection.box;
+
+      const x = box.x;
+      const y = box.y;
+      const width = box.width;
+      const height = box.height;
+
+      ctx.strokeStyle = 'red';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, width, height);
+
+      ctx.font = "16px sans-serif";
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.fillRect(x, y - 20, ctx.measureText(match.toString()).width + 10, 20);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillText(match.toString(), x + 5, y - 5);
+
+      log.innerHTML += `Rostro: ${match.toString()}<br>`;
     });
   }
 
