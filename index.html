@@ -54,7 +54,7 @@
     await faceapi.nets.faceRecognitionNet.loadFromUri('https://issitek.github.io/face-and-object-recognition/models');
 
     // Cargar imagen de referencia y crear descriptores
-    const img = await faceapi.fetchImage('/img/angel.jpg');
+    const img = await faceapi.fetchImage('https://issitek.github.io/face-and-object-recognition/img/angel.jpg');
     const detection = await faceapi
       .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
       .withFaceLandmarks()
